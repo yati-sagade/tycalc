@@ -23,6 +23,7 @@ TyCalc {
   boollit = "true" | "false"
 }
 """
+import sys
 from typing import Union, Tuple, Any
 from abc import abstractmethod, ABCMeta
 
@@ -495,3 +496,28 @@ class Parser:
           f'Expected {tok}, parsed so far: {self.stmts},'\
             f'remaining input: {self.tokens[self.curr:]}'
         return m
+
+def _run_file(inputfile):
+    with open(inputfile, 'rb') as fp:
+        program = fp.read().decode('utf-8').strip()
+
+    scanner = Scanner(program)
+    tokens = scanner.scan()
+
+    parser = Parser(tokens)
+    exprs = parser.parse()
+    print(f'====== Input program =========')
+    print(program)
+    print(f'====== Parse trees (one line per input expr) =========')
+    for expr in exprs:
+        print(f' {expr}')
+
+if __name__ == '__main__':
+    try:
+        inputfile = sys.argv[1]
+        _run_file(inputfile)
+    except IndexError:
+        while True:
+            s = input('> ')
+            parser = Parser(Scanner(s).scan())
+            print('{}'.format(parser.parse()))

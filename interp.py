@@ -64,6 +64,22 @@ def _logic_or(l: Val, r: Val, ty: typechecking.Type):
     assert typechecking.is_bool(ty), f'Expected bool but got {ty}'
     return BoolVal(l.val or r.val)
 
+def _cmp_lt(l: Val, r: Val, ty: typechecking.Type):
+    assert typechecking.is_bool(ty), f'Expected bool but got {ty}'
+    return BoolVal(l.val < r.val)
+
+def _cmp_le(l: Val, r: Val, ty: typechecking.Type):
+    assert typechecking.is_bool(ty), f'Expected bool but got {ty}'
+    return BoolVal(l.val <= r.val)
+
+def _cmp_gt(l: Val, r: Val, ty: typechecking.Type):
+    assert typechecking.is_bool(ty), f'Expected bool but got {ty}'
+    return BoolVal(l.val > r.val)
+
+def _cmp_ge(l: Val, r: Val, ty: typechecking.Type):
+    assert typechecking.is_bool(ty), f'Expected bool but got {ty}'
+    return BoolVal(l.val >= r.val)
+
 BINARY_OPS = {
     '+': _add,
     '-': _sub,
@@ -72,7 +88,11 @@ BINARY_OPS = {
     '%': _mod,
     '**': _exp,
     '||': _logic_or,
-    '&&': _logic_and
+    '&&': _logic_and,
+    '<': _cmp_lt,
+    '<=': _cmp_le,
+    '>': _cmp_gt,
+    '>=': _cmp_ge,
 }
 
 def _unary_plus(x: Val, ty: typechecking.Type):

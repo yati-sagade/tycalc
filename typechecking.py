@@ -1,3 +1,4 @@
+import sys
 import abc
 import parsing
 from collections import namedtuple
@@ -123,6 +124,18 @@ class TypeChecker(parsing.ExprVisitor):
                     expr,
                     Err(f'Invalid operands for {expr.op.value}: {lty} and {rty}'
                        ))
+        elif expr.op in (parsing.Sym('<'), parsing.Sym('>'), parsing.Sym('<='), parsing.Sym('>=')):
+            lty = self.compute_type(expr.left)
+            rty = self.compute_type(expr.right)
+            # Both args should be numeric for comparison
+            if not is_numeric(lty) or not is_numeric(rty):
+                set_type(
+                    expr,
+                    Err(f'Invalid operands for {expr.op.value}: {lty} and {rty}'
+                       ))
+            else:
+                set_type(expr, Bool())
+
         else:
           raise ValueError(f'Unknown op {expr.op} in {expr}')
 
@@ -162,3 +175,35 @@ class TypeChecker(parsing.ExprVisitor):
     def visit_ident_expr(self, expr: parsing.IdentExpr):
         self.debug('visit_ident')
         set_type(expr, self.idents[expr.ident])
+
+def _run_file(inputfile):
+    with open(inputfile, 'rb') as fp:
+        program = fp.read().decode('utf-8').strip()
+
+    scanner = parsing.Scanner(program)
+    tokens = scanner.scan()
+
+    parser = parsing.Parser(tokens)
+    exprs = parser.parse()
+
+    type_checker = TypeChecker(exprs)
+    type_checker.check()
+
+    print(f'====== Input program =========')
+    print(program)
+    print(f'====== Typed parse trees (one line per input expr) =========')
+    for expr in exprs:
+        print(f' {expr}')
+
+if __name__ == '__main__':
+    try:
+        inputfile = sys.argv[1]
+        _run_file(inputfile)
+    except IndexError:
+        while True:
+            s = input('> ')
+            parser = parsing.Parser(parsing.Scanner(s).scan())
+            expr = parser.parse()
+            type_checker = TypeChecker(expr)
+            type_checker.check() # Modifies trees to add type attrs
+            print('{}'.format(expr))
