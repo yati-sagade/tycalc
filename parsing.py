@@ -1,34 +1,50 @@
-"""
-TyCalc {
-  Prog = Stmt*
-  Stmt = Expr ";"
-  Expr = Assignment
-  Assignment = AssignmentAux | LogicalOr
-  AssignmentAux = ident "=" Assignment
-  LogicalOr = LogicalAnd ("||" LogicalAnd)*
-  LogicalAnd = Equality ("&&" Equality)*
-  Equality = Comparison (("!=" | "==") Comparison)*
-  Comparison = Term (("<=" | "<" | ">" | ">=") Term)*
-  Term = Factor (("+" | "-") Factor)*
-  Factor = Unary (("*" | "/" | "%") Unary)*
-  Unary = ("+" | "-")? Exponent
-  Exponent = ExponentExpr | Primary
-  ExponentExpr = Exponent ("**" Exponent)*
-  Primary = ParenExpr | ident | numlit | boollit
-  ParenExpr = "(" Expr ")"
-  ident = letter alnum*
-  numlit = fractional | integral
-  fractional = digit* "." digit+
-  integral = digit+
-  boollit = "true" | "false"
-}
+"""Parser for TyCalc.
+
+This module can be used programmatically via the Parser class, but can also be
+run directly:
+
+    $ python parsing.py -i INPUT_FILE
+
+To start a REPL,
+
+    $ python parsing.py
+
+Here's the grammar in PEG notation:
+
+    TyCalc {
+        Prog = Stmt*
+        Stmt = Expr ";"
+        Expr = Assignment
+        Assignment = AssignmentAux | LogicalOr
+        AssignmentAux = ident "=" Assignment
+        LogicalOr = LogicalAnd ("||" LogicalAnd)*
+        LogicalAnd = Equality ("&&" Equality)*
+        Equality = Comparison (("!=" | "==") Comparison)*
+        Comparison = Term (("<=" | "<" | ">" | ">=") Term)*
+        Term = Factor (("+" | "-") Factor)*
+        Factor = Unary (("*" | "/" | "%") Unary)*
+        Unary = ("+" | "-")? Exponent
+        Exponent = ExponentExpr | Primary
+        ExponentExpr = Exponent ("**" Exponent)*
+        Primary = ParenExpr | ident | numlit | boollit
+        ParenExpr = "(" Expr ")"
+        ident = letter alnum*
+        numlit = fractional | integral
+        fractional = digit* "." digit+
+        integral = digit+
+        boollit = "true" | "false"
+    }
+
+
 """
 import sys
+import argparse
 from typing import Union, Tuple, Any
 from abc import abstractmethod, ABCMeta
 
 
 class Err:
+    """Class to represent parsing errors."""
 
     def __init__(self, msg):
         self.msg = msg
@@ -38,6 +54,11 @@ class Err:
 
 
 class TokenBase(metaclass=ABCMeta):
+    """An abstract base for all kinds of tokens.
+    
+    All tokens have a string lexeme, a token-type-dependent "value", and a
+    location in the source code string.
+    """
 
     def __init__(self, lexeme, value, location: int):
         self.lexeme = lexeme
@@ -56,6 +77,11 @@ class TokenBase(metaclass=ABCMeta):
 
 
 class Ident(TokenBase):
+    """A token representing an identifier.
+    
+    Both the lexeme and value associated with an Ident token equal the name of
+    this identifier.
+    """
 
     def __init__(self, name: str, location: int):
         super().__init__(name, name, location)
@@ -65,32 +91,56 @@ class Ident(TokenBase):
 
 
 class Int(TokenBase):
+    """A token representing an integer literal.
+    
+    The associated lexeme is the integer as it appears in source code, and the
+    associated value is a Python int object containing the parsed integer value.
+    """
 
     def __init__(self, lexeme: str, value: int, location: int):
         super().__init__(lexeme, value, location)
 
 
 class Float(TokenBase):
+    """A token representing a floating point number literal.
+    
+    The associated lexeme is the number as it appears in source code, and the
+    associated value is a Python float object containing the parsed value.
+    """
 
     def __init__(self, lexeme: str, value: float, location: int):
         super().__init__(lexeme, value, location)
 
 
 class Bool(TokenBase):
+    """A token representing a Boolean literal.
+    
+    Allowed Boolean literals are 'true' and 'false'.
+    
+    The associated lexeme is the Boolean as it appears in source code, and the
+    associated value is a Python bool object (True for 'true', False for
+    'false').
+    """
 
     def __init__(self, lexeme: str, value: bool, location: int):
         super().__init__(lexeme, value, location)
 
 
 class Sym(TokenBase):
+    """A token representing a symbol.
+
+    This is used to hold single, and multi-character operators like '<', '==',
+    '!=', etc. Both the lexeme and value are equal to the string representing
+    the symbol.
+    """
 
     def __init__(self, value: str, location: int = None):
         super().__init__(value, value, location)
 
 
-# sorting by len reversed makes it easy to just iterate and match the current prefix of our
-# unprocessed input.
+# List of supported symbols (Sym tokens).
 SYMBOLS = [
+    # 2-char symbols
     '<=',
     '>=',
     '<',
@@ -101,6 +151,8 @@ SYMBOLS = [
     '=',
     '||',
     '&&',
+
+    # 1-char symbols
     '+',
     '-',
     '*',
@@ -109,10 +161,16 @@ SYMBOLS = [
     '%',
     ';',
 ]
+
+# Sort the symbols list by length reversed.
+#
+# This makes lookahead easy: Just iterate the list and match the current prefix
+# of our unprocessed input.
 SYMBOLS.sort(key=len, reverse=True)
 
 
 class Scanner:
+    """Scanner (lexer) for the TyCalc language."""
 
     def __init__(self, input, enable_debug=False):
         self.input = input
@@ -218,21 +276,32 @@ class Scanner:
 
 
 class Expr(metaclass=ABCMeta):
+    """Abstract base for TyCalc expressions.
+
+    All expressions have a span() that gives the location of the expression in
+    the source code, and support visitation via an ExprVisitor.
+    """
 
     def __init__(self):
         self.attrs = {}
-    
+
     @abstractmethod
     def span(self) -> Tuple[int, int]:
-      """Return the [start, end) for this expression."""
-      pass
+        """Return the [start, end) for this expression."""
+        pass
 
     @abstractmethod
     def accept(self, visitor: 'ExprVisitor'):
+        """Entry point for visitation.
+
+        Implementations must call the appropriate method on the provided
+        visitor.
+        """
         pass
 
 
 class BinaryExpr(Expr):
+    """A binary expression of the form LHS OPERATOR RHS."""
 
     def __init__(self, op: Sym, left: Expr, right: Expr):
         super().__init__()
@@ -242,10 +311,10 @@ class BinaryExpr(Expr):
 
     def __repr__(self):
         return f'BinaryExpr({self.op}, {self.left}, {self.right}; attrs={self.attrs})'
-    
+
     def span(self):
-        start, _  = self.left.span()
-        _, end = self.right.span() 
+        start, _ = self.left.span()
+        _, end = self.right.span()
         return (start, end)
 
     def accept(self, visitor: 'ExprVisitor'):
@@ -253,6 +322,7 @@ class BinaryExpr(Expr):
 
 
 class UnaryExpr(Expr):
+    """A binary expression of the form OPERATOR OPERAND."""
 
     def __init__(self, op: Sym, arg: Expr):
         super().__init__()
@@ -261,7 +331,7 @@ class UnaryExpr(Expr):
 
     def __repr__(self):
         return f'UnaryExpr({self.op}, {self.arg}; attrs={self.attrs})'
-    
+
     def span(self):
         start = self.op.location
         _, end = self.arg.span()
@@ -272,6 +342,7 @@ class UnaryExpr(Expr):
 
 
 class Literal(Expr):
+    """A literal integer, boolean or floating point number."""
 
     def __init__(self, value: Union[Int, Bool, Float]):
         super().__init__()
@@ -279,7 +350,7 @@ class Literal(Expr):
 
     def __repr__(self):
         return f'Literal({self.value}; attrs={self.attrs})'
-    
+
     def span(self):
         start = self.value.location
         end = start + len(self.value.lexeme)
@@ -290,6 +361,7 @@ class Literal(Expr):
 
 
 class IdentExpr(Expr):
+    """An identifier reference."""
 
     def __init__(self, ident: Ident):
         super().__init__()
@@ -297,7 +369,7 @@ class IdentExpr(Expr):
 
     def accept(self, visitor: 'ExprVisitor'):
         return visitor.visit_ident_expr(self)
-    
+
     def span(self):
         start = self.ident.location
         end = start + len(self.ident.value)
@@ -308,6 +380,11 @@ class IdentExpr(Expr):
 
 
 class ExprVisitor(metaclass=ABCMeta):
+    """Visitor for Expr objects.
+    
+    Visitation can be triggered by calling expr.accept(visitor), where
+    expr:Expr, and visitor:ExprVisitor.
+    """
 
     @abstractmethod
     def visit_binary_expr(self, expr: BinaryExpr) -> Any:
@@ -327,8 +404,16 @@ class ExprVisitor(metaclass=ABCMeta):
 
 
 class Parser:
+    """The TyCalc parser.
+    
+    This is a recursive descent parser for the grammar shown at the top of this file.
+    """
 
     def __init__(self, tokens, enable_debug=False):
+        """ctor.
+
+        If `enable_debug=True`, print diagnostic messages to stdout.
+        """
         self.enable_debug = enable_debug
         self.curr = 0
         self.tokens = tokens
@@ -377,6 +462,27 @@ class Parser:
             return self.logical_or()
 
     def _accumulate_binary_expr_tree(self, parse_fn, *ops):
+        """Helper for parsing multiple expressions.
+
+        First calls `parse_fn`, and then eagerly looks for any of the provided
+        `ops`, and if found, attempts another parse via `parse_fn`.
+
+        This is a common pattern in expressions like:
+
+            a1 * a2 +
+            b1 * b2 +
+            ...
+        
+        where we have tighter binding operations (* in the above example)
+        forming subexpressions grouped by the next lower precedence operator (+
+        above). Another example is:
+
+            a1 && a1 ||
+            b1 && b2 ||
+            ...
+        
+        where parse_fn will parse the && part, an ops = ['||'].
+        """
         expr = parse_fn()
         while (op := self.match_any(*ops)) is not None:
             rhs = parse_fn()
@@ -497,14 +603,15 @@ class Parser:
             f'remaining input: {self.tokens[self.curr:]}'
         return m
 
-def _run_file(inputfile):
+
+def _run_file(inputfile, debug):
     with open(inputfile, 'rb') as fp:
         program = fp.read().decode('utf-8').strip()
 
     scanner = Scanner(program)
     tokens = scanner.scan()
 
-    parser = Parser(tokens)
+    parser = Parser(tokens, enable_debug=debug)
     exprs = parser.parse()
     print(f'====== Input program =========')
     print(program)
@@ -512,12 +619,20 @@ def _run_file(inputfile):
     for expr in exprs:
         print(f' {expr}')
 
+
 if __name__ == '__main__':
-    try:
-        inputfile = sys.argv[1]
-        _run_file(inputfile)
-    except IndexError:
-        while True:
+    argparser = argparse.ArgumentParser(
+        'parser',
+        description='Parse TyCalc programs and print expression trees',
+    )
+    argparser.add_argument('-i', '--input')
+    argparser.add_argument('-d', '--debug', action='store_true')
+    args = argparser.parse_args()
+
+    if args.input is not None:
+        _run_file(args.input, args.debug)
+    else:
+        while True:  # Start REPL
             s = input('> ')
-            parser = Parser(Scanner(s).scan())
+            parser = Parser(Scanner(s).scan(), enable_debug=args.debug)
             print('{}'.format(parser.parse()))
